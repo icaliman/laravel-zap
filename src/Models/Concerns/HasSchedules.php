@@ -261,6 +261,20 @@ trait HasSchedules
         }
 
         $slots = [];
+
+        $availabilitySchedules = \Zap\Models\Schedule::where('schedulable_type', get_class($this))
+            ->where('schedulable_id', $this->getKey())
+            ->active()
+            ->availability()
+            ->forDate(now()->format('Y-m-d'))
+            ->with('periods')
+            ->get();
+
+        $period = $availabilitySchedules->first()?->periods?->first();
+
+        $dayStart = $period->start_time ?? $dayStart;
+        $dayEnd = $period->end_time ?? $dayEnd;
+
         $currentTime = \Carbon\Carbon::parse($date.' '.$dayStart);
         $endTime = \Carbon\Carbon::parse($date.' '.$dayEnd);
 

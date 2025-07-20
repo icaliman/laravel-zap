@@ -123,3 +123,28 @@ describe('Reproduce Specific Bugs', function () {
     });
 
 });
+
+describe('Reproduce Available Slots Bugs', function () {
+    it('should get only availability', function () {
+
+        $user = createUser();
+
+        Zap::for($user)
+            ->from('2025-03-15')
+            ->availability()
+            ->addPeriod('12:00', '13:00')
+            ->save();
+
+        $slots = $user->getAvailableSlots(
+            date: '2025-03-15',
+        );
+
+        expect($slots)->toBeArray();
+        expect($slots)->toHaveLength(1);
+        expect(array_pop($slots))->toMatchArray([
+            'start_time' => '12:00',
+            'end_time' => '13:00',
+            'is_available' => true,
+        ]);
+    });
+});
