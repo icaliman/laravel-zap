@@ -260,24 +260,40 @@ trait HasSchedules
             return [];
         }
 
-        $slots = [];
-
         $availabilitySchedules = \Zap\Models\Schedule::where('schedulable_type', get_class($this))
             ->where('schedulable_id', $this->getKey())
             ->active()
             ->availability()
-            ->forDate(now()->format('Y-m-d'))
+            ->forDate($date)
             ->with('periods')
             ->get();
 
-        $periods = [
+        $occupiedSchedules = \Zap\Models\Schedule::where('schedulable_type', get_class($this))
+            ->where('schedulable_id', $this->getKey())
+            ->active()
+            ->forDate($date)
+            ->with('periods')
+            ->get();
+
+        $availabilityPeriods = [
             'morning' => [
-                'start_time' => $dayStart,
+                'start_time' => null,
                 'end_time' => null,
             ],
             'afternoon' => [
                 'start_time' => null,
-                'end_time' => $dayEnd,
+                'end_time' => null,
+            ],
+        ];
+
+        $occupiedPeriods = [
+            'morning' => [
+                'start_time' => null,
+                'end_time' => null,
+            ],
+            'afternoon' => [
+                'start_time' => null,
+                'end_time' => null,
             ],
         ];
 
@@ -288,7 +304,7 @@ trait HasSchedules
         if ($availabilitySchedules->isNotEmpty()) {
             $availabilitySchedules->flatMap(function ($schedule) {
                 return $schedule->periods;
-            })->each(function ($period) use (&$periods, $morningAfternoonCutoff) {
+            })->each(function ($period) use (&$availabilityPeriods, $morningAfternoonCutoff) {
 
                 $startTime = $period->start_time;
                 $endTime = $period->end_time;
@@ -306,16 +322,16 @@ trait HasSchedules
                 if ($isMorningPeriod) {
                     // Update morning start time (find earliest)
                     // if ($startTime) {
-                    if (! $periods['morning']['start_time'] || $startTime < $periods['morning']['start_time']) {
-                        $periods['morning']['start_time'] = $startTime;
+                    if (! $availabilityPeriods['morning']['start_time'] || $startTime < $availabilityPeriods['morning']['start_time']) {
+                        $availabilityPeriods['morning']['start_time'] = $startTime;
                     }
                     // }
 
                     // Update morning end time (find latest, but cap at cutoff if period spans both)
                     $morningEndTime = ($isAfternoonPeriod) ? $morningAfternoonCutoff : $endTime;
                     if ($morningEndTime) {
-                        if (! $periods['morning']['end_time'] || $morningEndTime > $periods['morning']['end_time']) {
-                            $periods['morning']['end_time'] = $morningEndTime;
+                        if (! $availabilityPeriods['morning']['end_time'] || $morningEndTime > $availabilityPeriods['morning']['end_time']) {
+                            $availabilityPeriods['morning']['end_time'] = $morningEndTime;
                         }
                     }
                 }
@@ -325,15 +341,68 @@ trait HasSchedules
                     // Update afternoon start time (find earliest, but start from cutoff if period spans both)
                     $afternoonStartTime = ($isMorningPeriod) ? $morningAfternoonCutoff : $startTime;
                     if ($afternoonStartTime) {
-                        if (! $periods['afternoon']['start_time'] || $afternoonStartTime < $periods['afternoon']['start_time']) {
-                            $periods['afternoon']['start_time'] = $afternoonStartTime;
+                        if (! $availabilityPeriods['afternoon']['start_time'] || $afternoonStartTime < $availabilityPeriods['afternoon']['start_time']) {
+                            $availabilityPeriods['afternoon']['start_time'] = $afternoonStartTime;
                         }
                     }
 
                     // Update afternoon end time (find latest)
                     // if ($endTime) {
-                    if (! $periods['afternoon']['end_time'] || $endTime > $periods['afternoon']['end_time']) {
-                        $periods['afternoon']['end_time'] = $endTime;
+                    if (! $availabilityPeriods['afternoon']['end_time'] || $endTime > $availabilityPeriods['afternoon']['end_time']) {
+                        $availabilityPeriods['afternoon']['end_time'] = $endTime;
+                        // }
+                    }
+                }
+            });
+        } else {
+            $occupiedSchedules->flatMap(function ($schedule) {
+                return $schedule->periods;
+            })->each(function ($period) use (&$occupiedPeriods, $morningAfternoonCutoff) {
+
+                $startTime = $period->start_time;
+                $endTime = $period->end_time;
+
+                // Skip if both times are null
+                if (! $startTime && ! $endTime) {
+                    return;
+                }
+
+                // Determine if this period is morning, afternoon, or spans both
+                $isMorningPeriod = $startTime && $startTime < $morningAfternoonCutoff;
+                $isAfternoonPeriod = $endTime && $endTime >= $morningAfternoonCutoff;
+
+                // Handle morning periods
+                if ($isMorningPeriod) {
+                    // Update morning start time (find earliest)
+                    // if ($startTime) {
+                    if (! $occupiedPeriods['morning']['start_time'] || $startTime < $occupiedPeriods['morning']['start_time']) {
+                        $occupiedPeriods['morning']['start_time'] = $startTime;
+                    }
+                    // }
+
+                    // Update morning end time (find latest, but cap at cutoff if period spans both)
+                    $morningEndTime = ($isAfternoonPeriod) ? $morningAfternoonCutoff : $endTime;
+                    if ($morningEndTime) {
+                        if (! $occupiedPeriods['morning']['end_time'] || $morningEndTime > $occupiedPeriods['morning']['end_time']) {
+                            $occupiedPeriods['morning']['end_time'] = $morningEndTime;
+                        }
+                    }
+                }
+
+                // Handle afternoon periods
+                if ($isAfternoonPeriod) {
+                    // Update afternoon start time (find earliest, but start from cutoff if period spans both)
+                    $afternoonStartTime = ($isMorningPeriod) ? $morningAfternoonCutoff : $startTime;
+                    if ($afternoonStartTime) {
+                        if (! $occupiedPeriods['afternoon']['start_time'] || $afternoonStartTime < $occupiedPeriods['afternoon']['start_time']) {
+                            $occupiedPeriods['afternoon']['start_time'] = $afternoonStartTime;
+                        }
+                    }
+
+                    // Update afternoon end time (find latest)
+                    // if ($endTime) {
+                    if (! $occupiedPeriods['afternoon']['end_time'] || $endTime > $occupiedPeriods['afternoon']['end_time']) {
+                        $occupiedPeriods['afternoon']['end_time'] = $endTime;
                         // }
                     }
                 }
@@ -346,63 +415,125 @@ trait HasSchedules
         $afternoonStart = null;
         $afternoonEnd = null;
 
-        if (filled($periods['morning']['start_time'])) {
-            $morningStart = \Carbon\Carbon::parse($date.' '.$periods['morning']['start_time']);
+        if (filled($availabilityPeriods['morning']['start_time'])) {
+            $morningStart = \Carbon\Carbon::parse($date.' '.$availabilityPeriods['morning']['start_time']);
         }
-        if (filled($periods['morning']['end_time'])) {
-            $morningEnd = \Carbon\Carbon::parse($date.' '.$periods['morning']['end_time']);
+        if (filled($availabilityPeriods['morning']['end_time'])) {
+            $morningEnd = \Carbon\Carbon::parse($date.' '.$availabilityPeriods['morning']['end_time']);
         }
-        if (filled($periods['afternoon']['start_time'])) {
-            $afternoonStart = \Carbon\Carbon::parse($date.' '.$periods['afternoon']['start_time']);
+        if (filled($availabilityPeriods['afternoon']['start_time'])) {
+            $afternoonStart = \Carbon\Carbon::parse($date.' '.$availabilityPeriods['afternoon']['start_time']);
         }
-        if (filled($periods['afternoon']['end_time'])) {
-            $afternoonEnd = \Carbon\Carbon::parse($date.' '.$periods['afternoon']['end_time']);
+        if (filled($availabilityPeriods['afternoon']['end_time'])) {
+            $afternoonEnd = \Carbon\Carbon::parse($date.' '.$availabilityPeriods['afternoon']['end_time']);
         }
 
         // Safety counter to prevent infinite loops (max 1440 minutes in a day / min slot duration)
         $maxIterations = 1440;
         $iterations = 0;
 
-        while ($morningStart->lessThan($morningEnd) && $iterations < $maxIterations) {
-            $slotEnd = $morningStart->copy()->addMinutes($slotDuration);
+        $slots = [];
 
-            if ($slotEnd->lessThanOrEqualTo($morningEnd)) {
-                $isAvailable = $this->isAvailableAt(
-                    $date,
-                    $morningStart->format('H:i'),
-                    $slotEnd->format('H:i')
-                );
+        $morningDone = false;
+        $afternoonDone = false;
 
-                $slots[] = [
-                    'start_time' => $morningStart->format('H:i'),
-                    'end_time' => $slotEnd->format('H:i'),
-                    'is_available' => $isAvailable,
-                ];
+        if ($morningStart && $morningEnd) {
+            $morningDone = true;
+
+            while ($morningStart->lessThan($morningEnd) && $iterations < $maxIterations) {
+                $slotEnd = $morningStart->copy()->addMinutes($slotDuration);
+
+                if ($slotEnd->lessThanOrEqualTo($morningEnd)) {
+                    $isAvailable = $this->isAvailableAt(
+                        $date,
+                        $morningStart->format('H:i'),
+                        $slotEnd->format('H:i')
+                    );
+
+                    $slots[] = [
+                        'start_time' => $morningStart->format('H:i'),
+                        'end_time' => $slotEnd->format('H:i'),
+                        'is_available' => $isAvailable,
+                    ];
+                }
+
+                $morningStart->addMinutes($slotDuration);
+                $iterations++;
             }
-
-            $morningStart->addMinutes($slotDuration);
-            $iterations++;
         }
 
-        while ($afternoonStart->lessThan($afternoonEnd) && $iterations < $maxIterations) {
-            $slotEnd = $afternoonStart->copy()->addMinutes($slotDuration);
+        if ($afternoonStart && $afternoonEnd) {
+            $afternoonDone = true;
 
-            if ($slotEnd->lessThanOrEqualTo($afternoonEnd)) {
+            while ($afternoonStart->lessThan($afternoonEnd) && $iterations < $maxIterations) {
+                $slotEnd = $afternoonStart->copy()->addMinutes($slotDuration);
+
+                if ($slotEnd->lessThanOrEqualTo($afternoonEnd)) {
+                    $isAvailable = $this->isAvailableAt(
+                        $date,
+                        $afternoonStart->format('H:i'),
+                        $slotEnd->format('H:i')
+                    );
+
+                    $slots[] = [
+                        'start_time' => $afternoonStart->format('H:i'),
+                        'end_time' => $slotEnd->format('H:i'),
+                        'is_available' => $isAvailable,
+                    ];
+                }
+
+                $afternoonStart->addMinutes($slotDuration);
+                $iterations++;
+            }
+        }
+
+        if ($morningStart && $afternoonEnd && ! $morningDone && ! $afternoonDone) {
+            while ($morningStart->lessThan($afternoonEnd) && $iterations < $maxIterations) {
+                $slotEnd = $morningStart->copy()->addMinutes($slotDuration);
+
+                if ($slotEnd->lessThanOrEqualTo($afternoonEnd)) {
+                    $isAvailable = $this->isAvailableAt(
+                        $date,
+                        $morningStart->format('H:i'),
+                        $slotEnd->format('H:i')
+                    );
+
+                    $slots[] = [
+                        'start_time' => $morningStart->format('H:i'),
+                        'end_time' => $slotEnd->format('H:i'),
+                        'is_available' => $isAvailable,
+                    ];
+                }
+
+                $morningStart->addMinutes($slotDuration);
+                $iterations++;
+            }
+        }
+
+        if (blank($slots)) {
+            $currentTime = \Carbon\Carbon::parse($date.' '.$dayStart);
+            $endTime = \Carbon\Carbon::parse($date.' '.$dayEnd);
+
+            do {
                 $isAvailable = $this->isAvailableAt(
                     $date,
-                    $afternoonStart->format('H:i'),
-                    $slotEnd->format('H:i')
+                    $currentTime->copy()->format('H:i'),
+                    $endTime->copy()->format('H:i')
                 );
 
-                $slots[] = [
-                    'start_time' => $afternoonStart->format('H:i'),
-                    'end_time' => $slotEnd->format('H:i'),
-                    'is_available' => $isAvailable,
-                ];
-            }
+                if ($isAvailable) {
+                    $slots[] = [
+                        'start_time' => $currentTime->format('H:i'),
+                        'end_time' => $endTime->format('H:i'),
+                        'is_available' => $isAvailable,
+                    ];
 
-            $afternoonStart->addMinutes($slotDuration);
-            $iterations++;
+                    break;
+                }
+
+                $currentTime = $endTime->copy();
+            } while ($currentTime->addMinutes($slotDuration)->lessThanOrEqualTo($endTime));
+
         }
 
         return $slots;

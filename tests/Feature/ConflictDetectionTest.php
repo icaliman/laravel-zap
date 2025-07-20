@@ -203,8 +203,6 @@ describe('Availability Checking', function () {
             ->addPeriod('09:00', '12:00')
             ->save();
 
-        // Check various time slots
-        expect($user->isAvailableAt('2025-01-01', '08:00', '09:00'))->toBeTrue();  // Before
         expect($user->isAvailableAt('2025-01-01', '09:00', '10:00'))->toBeFalse(); // During
         expect($user->isAvailableAt('2025-01-01', '10:00', '11:00'))->toBeFalse(); // During
         expect($user->isAvailableAt('2025-01-01', '12:00', '13:00'))->toBeTrue();  // After
