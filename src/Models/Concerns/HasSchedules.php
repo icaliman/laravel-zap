@@ -305,11 +305,11 @@ trait HasSchedules
                 // Handle morning periods
                 if ($isMorningPeriod) {
                     // Update morning start time (find earliest)
-                    if ($startTime) {
-                        if (! $periods['morning']['start_time'] || $startTime < $periods['morning']['start_time']) {
-                            $periods['morning']['start_time'] = $startTime;
-                        }
+                    // if ($startTime) {
+                    if (! $periods['morning']['start_time'] || $startTime < $periods['morning']['start_time']) {
+                        $periods['morning']['start_time'] = $startTime;
                     }
+                    // }
 
                     // Update morning end time (find latest, but cap at cutoff if period spans both)
                     $morningEndTime = ($isAfternoonPeriod) ? $morningAfternoonCutoff : $endTime;
@@ -331,10 +331,10 @@ trait HasSchedules
                     }
 
                     // Update afternoon end time (find latest)
-                    if ($endTime) {
-                        if (! $periods['afternoon']['end_time'] || $endTime > $periods['afternoon']['end_time']) {
-                            $periods['afternoon']['end_time'] = $endTime;
-                        }
+                    // if ($endTime) {
+                    if (! $periods['afternoon']['end_time'] || $endTime > $periods['afternoon']['end_time']) {
+                        $periods['afternoon']['end_time'] = $endTime;
+                        // }
                     }
                 }
             });
@@ -359,37 +359,49 @@ trait HasSchedules
             $afternoonEnd = \Carbon\Carbon::parse($date.' '.$periods['afternoon']['end_time']);
         }
 
-        dd($morningStart, $morningEnd, $afternoonStart, $afternoonEnd);
-
-        // TODO
-
-        // If end time is before or equal to start time, return empty array
-        if ($endTime->lessThanOrEqualTo($currentTime)) {
-            return [];
-        }
-
         // Safety counter to prevent infinite loops (max 1440 minutes in a day / min slot duration)
         $maxIterations = 1440;
         $iterations = 0;
 
-        while ($currentTime->lessThan($endTime) && $iterations < $maxIterations) {
-            $slotEnd = $currentTime->copy()->addMinutes($slotDuration);
+        while ($morningStart->lessThan($morningEnd) && $iterations < $maxIterations) {
+            $slotEnd = $morningStart->copy()->addMinutes($slotDuration);
 
-            if ($slotEnd->lessThanOrEqualTo($endTime)) {
+            if ($slotEnd->lessThanOrEqualTo($morningEnd)) {
                 $isAvailable = $this->isAvailableAt(
                     $date,
-                    $currentTime->format('H:i'),
+                    $morningStart->format('H:i'),
                     $slotEnd->format('H:i')
                 );
 
                 $slots[] = [
-                    'start_time' => $currentTime->format('H:i'),
+                    'start_time' => $morningStart->format('H:i'),
                     'end_time' => $slotEnd->format('H:i'),
                     'is_available' => $isAvailable,
                 ];
             }
 
-            $currentTime->addMinutes($slotDuration);
+            $morningStart->addMinutes($slotDuration);
+            $iterations++;
+        }
+
+        while ($afternoonStart->lessThan($afternoonEnd) && $iterations < $maxIterations) {
+            $slotEnd = $afternoonStart->copy()->addMinutes($slotDuration);
+
+            if ($slotEnd->lessThanOrEqualTo($afternoonEnd)) {
+                $isAvailable = $this->isAvailableAt(
+                    $date,
+                    $afternoonStart->format('H:i'),
+                    $slotEnd->format('H:i')
+                );
+
+                $slots[] = [
+                    'start_time' => $afternoonStart->format('H:i'),
+                    'end_time' => $slotEnd->format('H:i'),
+                    'is_available' => $isAvailable,
+                ];
+            }
+
+            $afternoonStart->addMinutes($slotDuration);
             $iterations++;
         }
 
