@@ -147,4 +147,41 @@ describe('Reproduce Available Slots Bugs', function () {
             'is_available' => true,
         ]);
     });
+
+    it('should get only availability with multiple schedules', function () {
+        $user = createUser();
+
+        Zap::for($user)
+            ->from('2025-03-15')
+            ->availability()
+            ->addPeriod('08:00', '12:00')
+            ->save();
+
+        Zap::for($user)
+            ->from('2025-03-15')
+            ->availability()
+            ->addPeriod('10:00', '11:00')
+            ->save();
+
+
+        Zap::for($user)
+            ->from('2025-03-15')
+            ->availability()
+            ->addPeriod('14:00', '18:00')
+            ->save();
+
+        $slots = $user->getAvailableSlots(
+            date: '2025-03-15',
+        );
+
+        dd($slots);
+
+        expect($slots)->toBeArray();
+        expect($slots)->toHaveLength(1);
+        // expect(array_pop($slots))->toMatchArray([
+        //     'start_time' => '12:00',
+        //     'end_time' => '13:00',
+        //     'is_available' => true,
+        // ]);
+    })->only();
 });

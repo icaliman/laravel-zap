@@ -270,13 +270,98 @@ trait HasSchedules
             ->with('periods')
             ->get();
 
-        $period = $availabilitySchedules->first()?->periods?->first();
+        $periods = [
+            'morning' => [
+                'start_time' => $dayStart,
+                'end_time' => null,
+            ],
+            'afternoon' => [
+                'start_time' => null,
+                'end_time' => $dayEnd,
+            ],
+        ];
 
-        $dayStart = $period->start_time ?? $dayStart;
-        $dayEnd = $period->end_time ?? $dayEnd;
+        // Define the cutoff time between morning and afternoon (e.g., 12:00)
+        $morningAfternoonCutoff = '12:00:00';
 
-        $currentTime = \Carbon\Carbon::parse($date.' '.$dayStart);
-        $endTime = \Carbon\Carbon::parse($date.' '.$dayEnd);
+        // Get the start and end times from availability schedules
+        if ($availabilitySchedules->isNotEmpty()) {
+            $availabilitySchedules->flatMap(function ($schedule) {
+                return $schedule->periods;
+            })->each(function ($period) use (&$periods, $morningAfternoonCutoff) {
+
+                $startTime = $period->start_time;
+                $endTime = $period->end_time;
+
+                // Skip if both times are null
+                if (! $startTime && ! $endTime) {
+                    return;
+                }
+
+                // Determine if this period is morning, afternoon, or spans both
+                $isMorningPeriod = $startTime && $startTime < $morningAfternoonCutoff;
+                $isAfternoonPeriod = $endTime && $endTime >= $morningAfternoonCutoff;
+
+                // Handle morning periods
+                if ($isMorningPeriod) {
+                    // Update morning start time (find earliest)
+                    if ($startTime) {
+                        if (! $periods['morning']['start_time'] || $startTime < $periods['morning']['start_time']) {
+                            $periods['morning']['start_time'] = $startTime;
+                        }
+                    }
+
+                    // Update morning end time (find latest, but cap at cutoff if period spans both)
+                    $morningEndTime = ($isAfternoonPeriod) ? $morningAfternoonCutoff : $endTime;
+                    if ($morningEndTime) {
+                        if (! $periods['morning']['end_time'] || $morningEndTime > $periods['morning']['end_time']) {
+                            $periods['morning']['end_time'] = $morningEndTime;
+                        }
+                    }
+                }
+
+                // Handle afternoon periods
+                if ($isAfternoonPeriod) {
+                    // Update afternoon start time (find earliest, but start from cutoff if period spans both)
+                    $afternoonStartTime = ($isMorningPeriod) ? $morningAfternoonCutoff : $startTime;
+                    if ($afternoonStartTime) {
+                        if (! $periods['afternoon']['start_time'] || $afternoonStartTime < $periods['afternoon']['start_time']) {
+                            $periods['afternoon']['start_time'] = $afternoonStartTime;
+                        }
+                    }
+
+                    // Update afternoon end time (find latest)
+                    if ($endTime) {
+                        if (! $periods['afternoon']['end_time'] || $endTime > $periods['afternoon']['end_time']) {
+                            $periods['afternoon']['end_time'] = $endTime;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create Carbon instances for the final times
+        $morningStart = null;
+        $morningEnd = null;
+        $afternoonStart = null;
+        $afternoonEnd = null;
+
+        if (filled($periods['morning']['start_time'])) {
+            $morningStart = \Carbon\Carbon::parse($date.' '.$periods['morning']['start_time']);
+        }
+        if (filled($periods['morning']['end_time'])) {
+            $morningEnd = \Carbon\Carbon::parse($date.' '.$periods['morning']['end_time']);
+        }
+        if (filled($periods['afternoon']['start_time'])) {
+            $afternoonStart = \Carbon\Carbon::parse($date.' '.$periods['afternoon']['start_time']);
+        }
+        if (filled($periods['afternoon']['end_time'])) {
+            $afternoonEnd = \Carbon\Carbon::parse($date.' '.$periods['afternoon']['end_time']);
+        }
+
+        dd($morningStart, $morningEnd, $afternoonStart, $afternoonEnd);
+
+        // TODO
 
         // If end time is before or equal to start time, return empty array
         if ($endTime->lessThanOrEqualTo($currentTime)) {
